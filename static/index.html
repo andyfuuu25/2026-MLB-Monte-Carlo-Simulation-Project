@@ -1,0 +1,996 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>MLB Hybrid Simulator</title>
+<style>
+  :root {
+    --page: #f9f9f7; --surface: #fcfcfb;
+    --ink: #0b0b0b; --ink-2: #52514e; --muted: #898781;
+    --grid: #e1e0d9; --baseline: #c3c2b7;
+    --border: rgba(11,11,11,0.10);
+    --blue: #2a78d6; --red: #e34948;
+    --blue-soft: rgba(42,120,214,0.14); --red-soft: rgba(227,73,72,0.14);
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --page: #0d0d0d; --surface: #1a1a19;
+      --ink: #ffffff; --ink-2: #c3c2b7; --muted: #898781;
+      --grid: #2c2c2a; --baseline: #383835;
+      --border: rgba(255,255,255,0.10);
+      --blue: #3987e5; --red: #e66767;
+      --blue-soft: rgba(57,135,229,0.18); --red-soft: rgba(230,103,103,0.18);
+    }
+  }
+  * { box-sizing: border-box; margin: 0; }
+  body {
+    background: var(--page); color: var(--ink);
+    font: 14px/1.45 system-ui, -apple-system, "Segoe UI", sans-serif;
+    padding: 28px 20px 60px;
+  }
+  .wrap { max-width: 1180px; margin: 0 auto; }
+  h1 { font-size: 21px; font-weight: 650; letter-spacing: -0.2px; }
+  .sub { color: var(--ink-2); font-size: 13px; margin-top: 4px; }
+  .card {
+    background: var(--surface); border: 1px solid var(--border);
+    border-radius: 10px; padding: 18px 20px;
+  }
+  /* ---- controls ---- */
+  .controls {
+    display: flex; flex-wrap: wrap; gap: 22px; align-items: flex-end;
+    margin-top: 20px;
+  }
+  .ctl label {
+    display: block; font-size: 11px; text-transform: uppercase;
+    letter-spacing: 0.06em; color: var(--muted); margin-bottom: 6px;
+  }
+  .seg { display: inline-flex; border: 1px solid var(--border); border-radius: 8px; overflow: hidden; }
+  .seg button {
+    border: 0; background: transparent; color: var(--ink-2);
+    font: inherit; font-size: 13px; padding: 7px 14px; cursor: pointer;
+  }
+  .seg button.on { background: var(--blue); color: #fff; }
+  .seg button.on.danger { background: var(--red); }
+  select, input[type=range] {
+    font: inherit; color: var(--ink); background: var(--surface);
+    border: 1px solid var(--border); border-radius: 8px; padding: 7px 10px;
+  }
+  .ctl.pen { min-width: 190px; }
+  .ctl.pen .val { font-size: 12px; color: var(--ink-2); margin-left: 8px; }
+  #busy { color: var(--muted); font-size: 12px; margin-left: auto; align-self: center; }
+  /* ---- KPI tiles ---- */
+  .kpis { display: grid; grid-template-columns: repeat(auto-fit, minmax(210px, 1fr)); gap: 14px; margin-top: 20px; }
+  .kpi .k { font-size: 11px; text-transform: uppercase; letter-spacing: 0.06em; color: var(--muted); }
+  .kpi .v { font-size: 26px; font-weight: 650; margin-top: 6px; letter-spacing: -0.3px; }
+  .kpi .d { font-size: 12px; color: var(--ink-2); margin-top: 3px; }
+  .kpi .d .neg { color: var(--red); font-weight: 600; }
+  .kpi .d .pos { color: var(--blue); font-weight: 600; }
+  /* ---- charts ---- */
+  .grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; margin-top: 14px; }
+  @media (max-width: 900px) { .grid2 { grid-template-columns: 1fr; } }
+  .chart h2 { font-size: 13.5px; font-weight: 600; margin-bottom: 2px; }
+  .chart .note { font-size: 12px; color: var(--muted); margin-bottom: 12px; }
+  .brow { display: flex; align-items: center; gap: 8px; padding: 3px 0; }
+  .brow .lab { width: 42px; font-size: 12px; color: var(--ink-2); text-align: right; }
+  .brow .lab.sel { font-weight: 700; color: var(--ink); }
+  .brow .track { flex: 1; height: 12px; position: relative; }
+  .brow .bar {
+    position: absolute; inset: 1px auto 1px 0; border-radius: 0 4px 4px 0;
+    background: var(--blue); min-width: 1px; cursor: default;
+  }
+  .brow .num { width: 48px; font-size: 11.5px; color: var(--ink-2); font-variant-numeric: tabular-nums; }
+  .scroll30 { max-height: 420px; overflow-y: auto; padding-right: 4px; }
+  /* ---- distribution ---- */
+  .dist { margin-top: 14px; }
+  svg text { font: 11px system-ui, sans-serif; fill: var(--muted); }
+  .legend { display: flex; gap: 18px; font-size: 12.5px; color: var(--ink-2); margin-bottom: 6px; }
+  .legend .chip { display: inline-block; width: 14px; height: 4px; border-radius: 2px; margin-right: 6px; vertical-align: middle; }
+  /* ---- table ---- */
+  .tablecard { margin-top: 14px; overflow-x: auto; }
+  table { border-collapse: collapse; width: 100%; font-size: 12.5px; }
+  th { text-align: right; color: var(--muted); font-weight: 500; font-size: 11px;
+       text-transform: uppercase; letter-spacing: 0.05em; padding: 6px 10px;
+       border-bottom: 1px solid var(--baseline); }
+  th:first-child, td:first-child { text-align: left; }
+  td { padding: 6px 10px; border-bottom: 1px solid var(--grid);
+       font-variant-numeric: tabular-nums; text-align: right; color: var(--ink-2); }
+  td.team { color: var(--ink); }
+  tr.sel td { font-weight: 650; color: var(--ink); }
+  .bdh { font-size: 13.5px; font-weight: 600; }
+  .tablecard .note { font-size: 12px; color: var(--muted); margin: 2px 0 10px; }
+  td.idx { font-weight: 650; color: var(--ink); }
+  /* ---- tabs ---- */
+  .tabs { display: flex; gap: 4px; margin-top: 18px; border-bottom: 1px solid var(--grid); }
+  .tabs button {
+    border: 0; background: none; font: inherit; font-size: 13.5px;
+    color: var(--muted); padding: 8px 14px; cursor: pointer;
+    border-bottom: 2px solid transparent; margin-bottom: -1px;
+  }
+  .tabs button.on { color: var(--ink); border-bottom-color: var(--blue); font-weight: 600; }
+  /* ---- fantasy draft ---- */
+  .draftgrid { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; margin-top: 20px; }
+  @media (max-width: 900px) { .draftgrid { grid-template-columns: 1fr; } }
+  .pool h3 { font-size: 13px; font-weight: 600; }
+  .pool .cnt { color: var(--muted); font-weight: 500; }
+  .pool .tools { display: flex; gap: 8px; margin: 10px 0; }
+  .pool input[type=text] {
+    flex: 1; font: inherit; font-size: 13px; color: var(--ink);
+    background: var(--surface); border: 1px solid var(--border);
+    border-radius: 8px; padding: 6px 10px;
+  }
+  .pool .mini {
+    border: 1px solid var(--border); background: none; color: var(--ink-2);
+    font: inherit; font-size: 12px; border-radius: 8px; padding: 5px 10px; cursor: pointer;
+  }
+  .pool .mini:hover { border-color: var(--blue); color: var(--blue); }
+  .plist { max-height: 235px; overflow-y: auto; border-top: 1px solid var(--grid); }
+  .prow {
+    display: flex; gap: 8px; padding: 5px 6px; font-size: 12.5px;
+    border-bottom: 1px solid var(--grid); cursor: pointer; align-items: baseline;
+  }
+  .prow:hover { background: var(--blue-soft); }
+  .prow.taken { opacity: 0.35; cursor: default; }
+  .prow .nm { flex: 1; color: var(--ink); }
+  .prow .tm { color: var(--muted); width: 38px; }
+  .prow .st { color: var(--ink-2); font-variant-numeric: tabular-nums; width: 64px; text-align: right; }
+  .chips { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 10px; min-height: 26px; }
+  .chip2 {
+    display: inline-flex; gap: 7px; align-items: center; font-size: 12px;
+    background: var(--blue-soft); color: var(--ink); border-radius: 999px;
+    padding: 3px 10px;
+  }
+  .chip2 b { font-weight: 500; }
+  .chip2 .x { cursor: pointer; color: var(--muted); font-weight: 700; }
+  .chip2 .x:hover { color: var(--red); }
+  .fanbar { display: flex; flex-wrap: wrap; gap: 18px; align-items: flex-end; margin-top: 14px; }
+  .fanbar .go {
+    border: 0; background: var(--blue); color: #fff; font: inherit; font-size: 13.5px;
+    font-weight: 600; border-radius: 8px; padding: 9px 18px; cursor: pointer;
+  }
+  .fanbar .go:disabled { opacity: 0.4; cursor: default; }
+  .fanbar .preview { font-size: 12.5px; color: var(--ink-2); margin-left: auto; }
+  /* ---- tooltip ---- */
+  #tip {
+    position: fixed; pointer-events: none; z-index: 10; display: none;
+    background: var(--ink); color: var(--page); font-size: 12px;
+    padding: 6px 9px; border-radius: 6px; max-width: 260px;
+  }
+  footer { margin-top: 26px; color: var(--muted); font-size: 12px; line-height: 1.6; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>MLB Hybrid Simulator</h1>
+  <div class="sub" id="status">Loading simulation context…</div>
+
+  <div class="tabs">
+    <button id="tabSeason" class="on">Season outlook</button>
+    <button id="tabImpact">Player impact</button>
+    <button id="tabAwards">Award races</button>
+    <button id="tabFantasy">Fantasy draft</button>
+  </div>
+
+  <div class="card controls" id="ctlSeason">
+    <div class="ctl">
+      <label>Monte Carlo trials</label>
+      <select id="sims">
+        <option value="2000">2,000</option>
+        <option value="5000">5,000</option>
+        <option value="10000" selected>10,000</option>
+        <option value="20000">20,000</option>
+      </select>
+    </div>
+    <div class="ctl">
+      <label>Focus team</label>
+      <select id="team"></select>
+    </div>
+    <div id="busy"></div>
+  </div>
+
+  <div id="ctlInjury" style="display:none">
+    <div class="card controls">
+      <div class="ctl">
+        <label>Team</label>
+        <select id="iteam"></select>
+      </div>
+      <div class="ctl">
+        <label>Player to lose</label>
+        <select id="iplayer" style="min-width:230px"></select>
+      </div>
+      <div class="ctl">
+        <label>What's lost</label>
+        <div class="seg" id="ikind">
+          <button data-v="batting">Bat</button>
+          <button data-v="pitching">Arm</button>
+          <button data-v="both">Both</button>
+        </div>
+      </div>
+      <div class="ctl pen">
+        <label>Severity — replacement gap<span class="val" id="isevVal">+1.00</span></label>
+        <input type="range" id="isev" min="0.25" max="2.5" step="0.25" value="1.0" style="width:100%">
+      </div>
+      <div class="ctl">
+        <label>Trials</label>
+        <select id="isims">
+          <option value="2000">2,000</option>
+          <option value="5000">5,000</option>
+          <option value="10000" selected>10,000</option>
+        </select>
+      </div>
+      <button class="go" id="igo" style="border:0;background:var(--blue);color:#fff;font:inherit;font-size:13.5px;font-weight:600;border-radius:8px;padding:9px 18px;cursor:pointer">Simulate injury</button>
+      <button class="mini" id="irank" style="border:1px solid var(--border);background:none;color:var(--ink-2);font:inherit;font-size:12.5px;border-radius:8px;padding:9px 14px;cursor:pointer">Rank whole roster</button>
+      <div id="ibusy" style="color:var(--muted);font-size:12px;align-self:center"></div>
+    </div>
+    <div class="card pool" style="margin-top:14px">
+      <h3>League's most valuable players — composite metric model</h3>
+      <div class="note" style="margin:6px 0 8px">
+        wOBA batting runs + Statcast fielding runs prevented (OAA) +
+        0.6·SIERA / 0.4·FIP pitching runs, above replacement, ÷ 10 runs/win
+        (WPA excluded — descriptive, not predictive). Click a player to
+        simulate their loss.
+      </div>
+      <div class="plist" style="max-height:262px" id="leadlist"></div>
+    </div>
+    <div class="card chart" id="impactCard" style="display:none;margin-top:14px">
+      <h2 id="impactTitle"></h2>
+      <div class="note" id="impactNote"></div>
+      <div id="impactRows"></div>
+    </div>
+  </div>
+
+  <div id="ctlAwards" style="display:none">
+    <div class="card" style="margin-top:20px">
+      <div class="note" style="margin:0">
+        Award votes simulated inside every Monte Carlo trial: candidate value =
+        current runs above replacement + talent-rate projection over remaining
+        workload (batters: xwOBA/wOBA blend; pitchers: SIERA/FIP/xERA blend
+        nudged by a Stuff composite of fastball velocity, spin, induced
+        vertical break and whiff%) + that trial's team-success bonus + voter
+        noise. Hover a player for their advanced-metric card.
+        <span id="awardsBusy" style="color:var(--muted)"></span>
+      </div>
+    </div>
+    <div class="grid2">
+      <div class="card chart"><h2>AL MVP</h2><div id="al_mvp"></div></div>
+      <div class="card chart"><h2>NL MVP</h2><div id="nl_mvp"></div></div>
+      <div class="card chart"><h2>AL Cy Young</h2><div id="al_cy"></div></div>
+      <div class="card chart"><h2>NL Cy Young</h2><div id="nl_cy"></div></div>
+    </div>
+  </div>
+
+  <div id="ctlFantasy" style="display:none">
+    <div class="draftgrid">
+      <div class="card pool">
+        <h3>Lineup <span class="cnt" id="hcnt">0 / 9 hitters</span></h3>
+        <div class="tools">
+          <input type="text" id="hsearch" placeholder="Search hitters…">
+          <button class="mini" id="hfill">Auto-fill best</button>
+          <button class="mini" id="hclear">Clear</button>
+        </div>
+        <div class="plist" id="hlist"></div>
+        <div class="chips" id="hchips"></div>
+      </div>
+      <div class="card pool">
+        <h3>Rotation <span class="cnt" id="pcnt">0 / 5 pitchers</span></h3>
+        <div class="tools">
+          <input type="text" id="psearch" placeholder="Search pitchers…">
+          <button class="mini" id="pfill">Auto-fill best</button>
+          <button class="mini" id="pclear">Clear</button>
+        </div>
+        <div class="plist" id="plist"></div>
+        <div class="chips" id="pchips"></div>
+      </div>
+    </div>
+    <div class="card fanbar">
+      <div class="ctl">
+        <label>Takes over the schedule of</label>
+        <select id="slot"></select>
+      </div>
+      <div class="ctl">
+        <label>Monte Carlo trials</label>
+        <select id="fsims">
+          <option value="2000">2,000</option>
+          <option value="5000">5,000</option>
+          <option value="10000" selected>10,000</option>
+        </select>
+      </div>
+      <button class="go" id="fgo" disabled>Simulate full season</button>
+      <div class="preview" id="fprev">Draft 9 hitters and 5 pitchers to simulate.</div>
+    </div>
+  </div>
+
+  <div class="kpis" id="kpis"></div>
+
+  <div class="grid2">
+    <div class="card chart">
+      <h2>World Series championship odds</h2>
+      <div class="note">Top 12 clubs, share of trials winning the title</div>
+      <div id="wsbars"></div>
+    </div>
+    <div class="card chart">
+      <h2>Playoff odds</h2>
+      <div class="note">All 30 clubs, share of trials reaching October</div>
+      <div class="scroll30" id="pobars"></div>
+    </div>
+  </div>
+
+  <div class="card chart dist">
+    <h2 id="distTitle">Win distribution</h2>
+    <div class="note" id="distNote"></div>
+    <div class="legend" id="legend" style="display:none"></div>
+    <div id="distsvg"></div>
+  </div>
+
+  <div id="breakdown">
+    <div class="card tablecard" style="margin-top:14px">
+      <h2 class="bdh" id="bdLineupTitle">Projected lineup</h2>
+      <div class="note" id="bdLineupNote"></div>
+      <table id="lineupTbl">
+        <thead><tr>
+          <th>Player</th><th>PA</th><th>AVG</th><th>OBP</th><th>SLG</th>
+          <th>OPS</th><th>HR</th><th>Proj PA</th><th>Proj HR (p5–p95)</th>
+          <th>Proj OPS (p5–p95)</th>
+        </tr></thead><tbody></tbody>
+      </table>
+    </div>
+    <div class="grid2">
+      <div class="card tablecard" style="margin-top:0">
+        <h2 class="bdh" id="bdRotTitle">Projected rotation</h2>
+        <div class="note" id="bdRotNote"></div>
+        <table id="rotTbl">
+          <thead><tr>
+            <th>Pitcher</th><th>IP</th><th>ERA</th><th>WHIP</th><th>K/9</th>
+            <th>Proj ERA (p5–p95)</th><th>Proj WHIP</th><th>Proj K</th>
+          </tr></thead><tbody></tbody>
+        </table>
+      </div>
+      <div class="card tablecard" style="margin-top:0">
+        <h2 class="bdh" id="bdMetTitle">Team metrics vs league</h2>
+        <div class="note">Season-to-date rates; OPS+ and ERA+ are league-relative (no park factors)</div>
+        <table id="metricsTbl">
+          <thead><tr><th>Metric</th><th>Team</th><th>League</th></tr></thead>
+          <tbody></tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+
+  <div class="card tablecard">
+    <table id="rank">
+      <thead><tr>
+        <th>Team</th><th>Division</th><th>Exp W</th><th>W p5–p95</th>
+        <th>Div %</th><th>Playoff %</th><th>Pennant %</th><th>WS %</th><th>Elo</th>
+      </tr></thead>
+      <tbody></tbody>
+    </table>
+  </div>
+
+  <footer>
+    Hybrid model: from-scratch Elo (K=20, +24 home-field, 25% off-season reversion)
+    + bottom-up rosters (Runs Created, staff FIP) fused by logistic regression;
+    completed games locked in, remaining schedule Monte-Carlo simulated with
+    per-trial dynamic Elo and the full 2022-format postseason bracket.
+    Data: MLB Stats API (pybaseball backends 403-blocked). Methods &amp; citations in README.md.
+  </footer>
+</div>
+<div id="tip"></div>
+
+<script>
+"use strict";
+const state = { scenario: "healthy", sims: 10000, penalty: 1.0, team: "LAD" };
+const $ = id => document.getElementById(id);
+const fmtPct = v => v >= 99.95 ? "100%" : v.toFixed(1) + "%";
+const tip = $("tip");
+
+function showTip(html, x, y) {
+  tip.innerHTML = html; tip.style.display = "block";
+  const pad = 14, w = tip.offsetWidth;
+  tip.style.left = Math.min(x + pad, innerWidth - w - 8) + "px";
+  tip.style.top = (y + pad) + "px";
+}
+const hideTip = () => tip.style.display = "none";
+
+// ---------- data fetch ----------
+let inflight = null;
+async function refresh() {
+  $("busy").textContent = "simulating…";
+  const body = JSON.stringify(state);
+  inflight = body;
+  try {
+    const r = await fetch("/api/simulate", {
+      method: "POST", headers: { "Content-Type": "application/json" }, body });
+    if (!r.ok) throw new Error((await r.json()).error || r.statusText);
+    const d = await r.json();
+    if (inflight !== body) return;      // superseded by a newer request
+    render(d);
+    $("busy").textContent = "";
+  } catch (e) {
+    $("busy").textContent = "error: " + e.message;
+  }
+}
+
+// ---------- rendering ----------
+function render(d) {
+  const fantasy = d.mode === "fantasy";
+  $("status").textContent = fantasy
+    ? `${d.season} full-season replay · your draft takes ${d.slot_name}'s schedule · ` +
+      `implied starting Elo ${d.implied_elo} · exp ${d.profile.exp_rs.toFixed(2)} RS/G, ` +
+      `${d.profile.exp_ra.toFixed(2)} RA/G · ${d.sims.toLocaleString()} trials`
+    : d.mode === "injury"
+    ? `${d.season} rest of season · ${d.team_name} lose ${d.player} ` +
+      `(${{batting: "bat", pitching: "arm", both: "bat + arm"}[d.kind]}) at ` +
+      `severity +${d.severity.toFixed(2)} · ${d.remaining.toLocaleString()} games × ` +
+      `${d.sims.toLocaleString()} trials`
+    : `${d.season} season · ${d.locked.toLocaleString()} results locked in · ` +
+      `${d.remaining.toLocaleString()} games simulated × ${d.sims.toLocaleString()} trials · ` +
+      `model accuracy ${(d.model.accuracy * 100).toFixed(1)}% on ${d.model.n_games.toLocaleString()} games`;
+
+  renderKpis(d);
+  renderBars($("wsbars"), d.rankings.slice(0, 12), "ws_pct", d);
+  renderBars($("pobars"),
+    [...d.rankings].sort((a, b) => b.playoff_pct - a.playoff_pct), "playoff_pct", d);
+  renderDist(d);
+  renderTable(d);
+  // Player-level breakdown describes the focus club in season mode only.
+  const seasonMode = !d.mode || d.mode === "season";
+  $("breakdown").style.display = seasonMode ? "" : "none";
+  if (seasonMode) loadBreakdown(state.team);
+}
+
+// ---------- team breakdown ----------
+const bdCache = new Map();
+async function loadBreakdown(team) {
+  let b = bdCache.get(team);
+  if (!b) {
+    const r = await fetch(`/api/team/${team}`);
+    if (!r.ok) return;
+    b = await r.json();
+    bdCache.set(team, b);
+  }
+  renderBreakdown(b);
+}
+
+const band = (b, dig) =>
+  `${b.mean.toFixed(dig)} <span style="color:var(--muted)">(${b.p5.toFixed(dig)}–${b.p95.toFixed(dig)})</span>`;
+const f3 = v => v.toFixed(3).replace(/^0/, "");
+
+function renderBreakdown(b) {
+  const note = `${b.games_played} games played, ${b.games_remaining} remaining · ` +
+    `each player's rest of season simulated ${b.sims.toLocaleString()} times`;
+  $("bdLineupTitle").textContent =
+    `${b.name} — projected lineup (top 9 by playing time)`;
+  $("bdLineupNote").textContent = note;
+  $("lineupTbl").querySelector("tbody").innerHTML = b.lineup.map(p => `
+    <tr><td class="team">${p.name}</td><td>${p.pa}</td>
+      <td>${f3(p.avg)}</td><td>${f3(p.obp)}</td><td>${f3(p.slg)}</td>
+      <td>${f3(p.ops)}</td><td>${p.hr}</td><td>${p.proj_pa}</td>
+      <td>${band(p.proj_hr, 0)}</td>
+      <td>${f3(p.proj_ops.mean)} <span style="color:var(--muted)">(${f3(p.proj_ops.p5)}–${f3(p.proj_ops.p95)})</span></td>
+    </tr>`).join("");
+
+  $("bdRotTitle").textContent = `${b.name} — projected rotation (top 5 by innings)`;
+  $("bdRotNote").textContent = "Poisson event draws over projected remaining innings";
+  $("rotTbl").querySelector("tbody").innerHTML = b.rotation.map(p => `
+    <tr><td class="team">${p.name}</td><td>${p.ip.toFixed(1)}</td>
+      <td>${p.era.toFixed(2)}</td><td>${p.whip.toFixed(2)}</td><td>${p.k9.toFixed(1)}</td>
+      <td>${band(p.proj_era, 2)}</td><td>${band(p.proj_whip, 2)}</td>
+      <td>${band(p.proj_k, 0)}</td>
+    </tr>`).join("");
+
+  const m = b.metrics, tb = m.batting, lb = m.batting_lg,
+        tp = m.pitching, lp = m.pitching_lg;
+  $("bdMetTitle").textContent = `${b.name} — team metrics vs league`;
+  const rows = [
+    ["AVG", f3(tb.avg), f3(lb.avg)], ["OBP", f3(tb.obp), f3(lb.obp)],
+    ["SLG", f3(tb.slg), f3(lb.slg)], ["OPS", f3(tb.ops), f3(lb.ops)],
+    ["OPS+", `<span class="idxv">${m.ops_plus.toFixed(0)}</span>`, "100"],
+    ["HR", tb.hr, "—"], ["BB%", tb.bb_pct.toFixed(1), lb.bb_pct.toFixed(1)],
+    ["ERA", tp.era.toFixed(2), lp.era.toFixed(2)],
+    ["ERA+", `<span class="idxv">${m.era_plus.toFixed(0)}</span>`, "100"],
+    ["WHIP", tp.whip.toFixed(2), lp.whip.toFixed(2)],
+    ["K/9", tp.k9.toFixed(1), lp.k9.toFixed(1)],
+    ["BB/9", tp.bb9.toFixed(1), lp.bb9.toFixed(1)],
+    ["HR/9", tp.hr9.toFixed(2), lp.hr9.toFixed(2)],
+  ];
+  $("metricsTbl").querySelector("tbody").innerHTML = rows.map(([k, t, l]) =>
+    `<tr><td class="team">${k}</td><td class="${String(t).includes("idxv") ? "idx" : ""}">${t}</td><td>${l}</td></tr>`).join("");
+}
+
+function delta(v, suffix) {
+  if (v === null || v === undefined) return "";
+  const cls = v < 0 ? "neg" : "pos", sign = v > 0 ? "+" : "";
+  return ` <span class="${cls}">${sign}${v.toFixed(1)}${suffix}</span>`;
+}
+
+function renderKpis(d) {
+  const s = d.selected, dl = d.deltas, fantasy = d.mode === "fantasy";
+  const who = fantasy ? "Your draft" : s.abbrev;
+  const tiles = [
+    { k: "World Series favorite", v: d.favorite.abbrev,
+      d: `${d.favorite.name} — ${fmtPct(d.favorite.ws_pct)} title odds` },
+    { k: `${who} expected wins`, v: s.exp_wins.toFixed(1),
+      d: `p5–p95: ${s.wins_p5.toFixed(0)}–${s.wins_p95.toFixed(0)}` +
+         (dl ? delta(dl.exp_wins, " W") : "") },
+    { k: `${who} playoff odds`, v: fmtPct(s.playoff_pct),
+      d: `win division ${fmtPct(s.div_pct)}` +
+         (dl ? delta(dl.playoff_pct, " pp") : "") },
+    { k: `${who} World Series odds`, v: fmtPct(s.ws_pct),
+      d: `pennant ${fmtPct(s.pennant_pct)}` +
+         (dl ? delta(dl.ws_pct, " pp") : "") },
+  ];
+  $("kpis").innerHTML = tiles.map(t =>
+    `<div class="card kpi"><div class="k">${t.k}</div>` +
+    `<div class="v">${t.v}</div><div class="d">${t.d}</div></div>`).join("");
+}
+
+function renderBars(el, rows, key, d) {
+  const max = Math.max(...rows.map(r => r[key]), 1);
+  el.innerHTML = rows.map(r => `
+    <div class="brow" data-tip="${r.name} · ${r.division}<br>${key === "ws_pct" ? "World Series" : "Playoffs"}: <b>${r[key].toFixed(1)}%</b> · exp ${r.exp_wins.toFixed(1)} W">
+      <div class="lab${r.abbrev === d.selected.abbrev ? " sel" : ""}">${r.abbrev}</div>
+      <div class="track"><div class="bar" style="width:${(r[key] / max * 100).toFixed(2)}%"></div></div>
+      <div class="num">${r[key].toFixed(1)}%</div>
+    </div>`).join("");
+  el.querySelectorAll(".brow").forEach(row => {
+    row.onmousemove = e => showTip(row.dataset.tip, e.clientX, e.clientY);
+    row.onmouseleave = hideTip;
+  });
+}
+
+function renderDist(d) {
+  const cur = d.distribution.current, base = d.distribution.baseline;
+  const fantasy = d.mode === "fantasy";
+  // Current series is the primary hue except in the injury overlay, where the
+  // healthy baseline keeps blue and the stress case is red; the fantasy
+  // baseline (the real club) is neutral gray.
+  const cs = fantasy
+    ? { cur: "var(--blue)", curSoft: "var(--blue-soft)",
+        base: "var(--muted)", baseSoft: "rgba(137,135,129,0.16)" }
+    : { cur: "var(--red)", curSoft: "var(--red-soft)",
+        base: "var(--blue)", baseSoft: "var(--blue-soft)" };
+  $("distTitle").textContent = `${d.selected.name} — regular-season win distribution`;
+  $("distNote").textContent = d.dist_note
+    ? d.dist_note
+    : fantasy
+    ? `Full 162-game replay: your roster vs the real ${d.slot_name} in the same slot, identical random seeds.`
+    : d.scenario === "injured"
+      ? `Scenario B: Ohtani's innings priced at league FIP +${d.penalty.toFixed(2)}; his DH bat stays. Identical random seeds isolate the effect.`
+      : "Share of trials finishing at each win total; dashed line marks the mean.";
+  if (base && d.legend) {
+    $("legend").style.display = "flex";
+    $("legend").innerHTML =
+      `<span><span class="chip" style="background:${cs.base}"></span>${d.legend.baseline}</span>` +
+      `<span><span class="chip" style="background:${cs.cur}"></span>${d.legend.current}</span>`;
+  } else $("legend").style.display = "none";
+
+  const W = 980, H = 250, L = 44, R = 16, T = 12, B = 30;
+  const series = base ? [base, cur] : [cur];
+  const xs = series.flatMap(s => s.bins);
+  const xmin = Math.min(...xs), xmax = Math.max(...xs);
+  const ymax = Math.max(...series.flatMap(s => s.pct)) * 1.12;
+  const X = v => L + (v - xmin) / (xmax - xmin || 1) * (W - L - R);
+  const Y = v => T + (1 - v / ymax) * (H - T - B);
+
+  const path = s => s.bins.map((b, i) =>
+    (i ? "L" : "M") + X(b).toFixed(1) + " " + Y(s.pct[i]).toFixed(1)).join(" ");
+  const area = s => path(s) +
+    ` L ${X(s.bins[s.bins.length - 1]).toFixed(1)} ${Y(0)} L ${X(s.bins[0]).toFixed(1)} ${Y(0)} Z`;
+
+  const gridlines = [];
+  for (let g = 0; g <= 4; g++) {
+    const yv = ymax / 4 * g, y = Y(yv).toFixed(1);
+    gridlines.push(`<line x1="${L}" x2="${W - R}" y1="${y}" y2="${y}" stroke="var(--grid)"/>` +
+      `<text x="${L - 6}" y="${+y + 4}" text-anchor="end">${yv.toFixed(1)}%</text>`);
+  }
+  const ticks = [];
+  const step = Math.max(1, Math.round((xmax - xmin) / 10));
+  for (let x = xmin; x <= xmax; x += step)
+    ticks.push(`<text x="${X(x).toFixed(1)}" y="${H - 8}" text-anchor="middle">${x}</text>`);
+
+  // Baseline drawn first (underneath); single series is always blue.
+  const order = base ? [base, cur] : [cur];
+  const color = s => base ? (s === cur ? cs.cur : cs.base) : "var(--blue)";
+  const softFill = s => base ? (s === cur ? cs.curSoft : cs.baseSoft) : "var(--blue-soft)";
+  // means, labelled on outer sides so they never collide
+  const means = order.map((s, i) => {
+    const other = order[1 - i];
+    const right = !other || s.mean >= other.mean;
+    return `<line x1="${X(s.mean)}" x2="${X(s.mean)}" y1="${T}" y2="${Y(0)}"
+        stroke="${color(s)}" stroke-dasharray="4 3"/>` +
+      `<text x="${X(s.mean) + (right ? 5 : -5)}" y="${T + 12}"
+        text-anchor="${right ? "start" : "end"}" fill="var(--ink-2)">${s.mean.toFixed(1)}</text>`;
+  }).join("");
+
+  $("distsvg").innerHTML =
+  `<svg viewBox="0 0 ${W} ${H}" style="width:100%">
+    ${gridlines.join("")}
+    ${order.map(s => `<path d="${area(s)}" fill="${softFill(s)}"/>`).join("")}
+    ${order.map(s => `<path d="${path(s)}" fill="none"
+        stroke="${color(s)}" stroke-width="2"/>`).join("")}
+    ${means}
+    <line x1="${L}" x2="${W - R}" y1="${Y(0)}" y2="${Y(0)}" stroke="var(--baseline)"/>
+    ${ticks.join("")}
+    <line id="xhair" y1="${T}" y2="${Y(0)}" stroke="var(--baseline)" style="display:none"/>
+  </svg>`;
+
+  const svg = $("distsvg").querySelector("svg"), xh = svg.querySelector("#xhair");
+  svg.onmousemove = e => {
+    const r = svg.getBoundingClientRect();
+    const px = (e.clientX - r.left) / r.width * W;   // viewBox coordinates
+    const wins = Math.round(xmin + (px - L) / (W - L - R) * (xmax - xmin));
+    if (wins < xmin || wins > xmax) { xh.style.display = "none"; hideTip(); return; }
+    xh.setAttribute("x1", X(wins)); xh.setAttribute("x2", X(wins));
+    xh.style.display = "";
+    const at = s => { const i = s.bins.indexOf(wins); return i < 0 ? 0 : s.pct[i]; };
+    const html = `<b>${wins} wins</b><br>` +
+      (base && d.legend
+        ? `${d.legend.baseline}: ${at(base).toFixed(1)}%<br>${d.legend.current}: ${at(cur).toFixed(1)}%`
+        : `${at(cur).toFixed(1)}% of trials`);
+    showTip(html, e.clientX, e.clientY);
+  };
+  svg.onmouseleave = () => { xh.style.display = "none"; hideTip(); };
+}
+
+function renderTable(d) {
+  $("rank").querySelector("tbody").innerHTML = d.rankings.map(r => `
+    <tr class="${r.abbrev === d.selected.abbrev ? "sel" : ""}">
+      <td class="team">${r.abbrev} — ${r.name}</td><td>${r.division.replace("American League", "AL").replace("National League", "NL")}</td>
+      <td>${r.exp_wins.toFixed(1)}</td><td>${r.wins_p5.toFixed(0)}–${r.wins_p95.toFixed(0)}</td>
+      <td>${r.div_pct.toFixed(1)}</td><td>${r.playoff_pct.toFixed(1)}</td>
+      <td>${r.pennant_pct.toFixed(1)}</td><td>${r.ws_pct.toFixed(1)}</td>
+      <td>${r.elo_final.toFixed(0)}</td>
+    </tr>`).join("");
+}
+
+// ---------- season controls ----------
+$("sims").onchange = e => { state.sims = +e.target.value; refresh(); };
+$("team").onchange = e => { state.team = e.target.value; refresh(); };
+
+// ---------- injury impact lab ----------
+const injury = { targets: null, team: "LAD", player: null, kinds: [],
+                 kind: "batting", severity: 1.0 };
+
+async function loadTargets() {
+  if (injury.targets) return;
+  injury.targets = await (await fetch("/api/injury/targets")).json();
+  fillPlayers();
+}
+
+function fillPlayers() {
+  const t = injury.targets[injury.team];
+  const opt = (p, tag) =>
+    `<option value="${p.id}:${tag}">${p.name} — ${tag === "h"
+      ? p.RC.toFixed(0) + " RC" : p.IP.toFixed(0) + " IP, " + p.FIP.toFixed(2) + " FIP"}</option>`;
+  $("iplayer").innerHTML =
+    `<optgroup label="Hitters">${t.hitters.map(p => opt(p, "h")).join("")}</optgroup>` +
+    `<optgroup label="Pitchers">${t.pitchers.map(p => opt(p, "p")).join("")}</optgroup>`;
+  pickPlayer($("iplayer").value);
+}
+
+function pickPlayer(val) {
+  const [id] = val.split(":");
+  injury.player = +id;
+  const t = injury.targets[injury.team];
+  const isH = t.hitters.some(p => p.id === injury.player);
+  const isP = t.pitchers.some(p => p.id === injury.player);
+  injury.kinds = isH && isP ? ["batting", "pitching", "both"]
+               : isH ? ["batting"] : ["pitching"];
+  injury.kind = injury.kinds.includes(injury.kind) ? injury.kind : injury.kinds[0];
+  if (isH && isP) injury.kind = "both";   // two-way default: lose everything
+  $("ikind").querySelectorAll("button").forEach(b => {
+    const ok = injury.kinds.includes(b.dataset.v);
+    b.disabled = !ok;
+    b.style.opacity = ok ? "" : "0.3";
+    b.classList.toggle("on", b.dataset.v === injury.kind);
+    b.classList.toggle("danger", b.dataset.v === injury.kind);
+  });
+}
+
+$("iteam").onchange = e => { injury.team = e.target.value; fillPlayers(); };
+$("iplayer").onchange = e => pickPlayer(e.target.value);
+$("ikind").querySelectorAll("button").forEach(b => b.onclick = () => {
+  if (b.disabled) return;
+  injury.kind = b.dataset.v;
+  $("ikind").querySelectorAll("button").forEach(x => {
+    x.classList.toggle("on", x === b); x.classList.toggle("danger", x === b);
+  });
+});
+$("isev").oninput = e => {
+  injury.severity = +e.target.value;
+  $("isevVal").textContent = "+" + injury.severity.toFixed(2);
+};
+
+$("igo").onclick = async () => {
+  $("ibusy").textContent = "simulating…";
+  try {
+    const r = await fetch("/api/injury/simulate", {
+      method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ team: injury.team, player_id: injury.player,
+        kind: injury.kind, severity: injury.severity,
+        sims: +$("isims").value }) });
+    if (!r.ok) throw new Error((await r.json()).error || r.statusText);
+    render(await r.json());
+    $("ibusy").textContent = "";
+  } catch (e) { $("ibusy").textContent = "error: " + e.message; }
+};
+
+$("irank").onclick = async () => {
+  $("ibusy").textContent = "ranking roster (10 separate injury sims)…";
+  try {
+    const r = await fetch("/api/injury/leaderboard", {
+      method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ team: injury.team, severity: injury.severity,
+        sims: 4000 }) });
+    if (!r.ok) throw new Error((await r.json()).error || r.statusText);
+    renderImpact(await r.json());
+    $("ibusy").textContent = "";
+  } catch (e) { $("ibusy").textContent = "error: " + e.message; }
+};
+
+function renderImpact(d) {
+  const name = injury.targets ? ($("iteam").selectedOptions[0]?.textContent || d.team) : d.team;
+  $("impactCard").style.display = "";
+  $("impactTitle").textContent = `Who can ${d.team} least afford to lose?`;
+  $("impactNote").textContent =
+    `Each row is a separate ${d.sims.toLocaleString()}-trial rest-of-season simulation with that ` +
+    `player replaced at severity +${d.severity.toFixed(2)}. Healthy baseline: ` +
+    `${d.baseline.exp_wins} exp wins, ${d.baseline.playoff_pct}% playoffs, ${d.baseline.ws_pct}% WS.`;
+  const maxAbs = Math.max(...d.players.map(p => Math.abs(p.d_ws)), 0.1);
+  const kindTag = { batting: "bat", pitching: "arm", both: "two-way" };
+  $("impactRows").innerHTML = d.players.map(p => `
+    <div class="brow" data-tip="${p.name} (${kindTag[p.kind]})<br>
+        exp wins: <b>${p.d_wins > 0 ? "+" : ""}${p.d_wins.toFixed(1)}</b> ·
+        playoffs: <b>${p.d_playoff > 0 ? "+" : ""}${p.d_playoff.toFixed(1)} pp</b> ·
+        World Series: <b>${p.d_ws > 0 ? "+" : ""}${p.d_ws.toFixed(1)} pp</b>">
+      <div class="lab" style="width:150px">${p.name} <span style="color:var(--muted)">· ${kindTag[p.kind]}</span></div>
+      <div class="track"><div class="bar" style="background:var(--red);width:${(Math.abs(p.d_ws) / maxAbs * 100).toFixed(1)}%"></div></div>
+      <div class="num" style="width:110px">${p.d_ws.toFixed(1)} pp WS · ${p.d_wins.toFixed(1)} W</div>
+    </div>`).join("");
+  $("impactRows").querySelectorAll(".brow").forEach(row => {
+    row.onmousemove = e => showTip(row.dataset.tip, e.clientX, e.clientY);
+    row.onmouseleave = hideTip;
+  });
+  void name;
+}
+
+// ---------- fantasy draft ----------
+const draft = { hitters: [], pitchers: [], pool: null };
+const CAP = { hitters: 9, pitchers: 5 };
+
+async function loadPool() {
+  if (draft.pool) return;
+  draft.pool = await (await fetch("/api/players")).json();
+  renderPools();
+}
+
+function poolRows(kind) {
+  const q = $(kind === "hitters" ? "hsearch" : "psearch").value.trim().toLowerCase();
+  let rows = draft.pool[kind];
+  if (q) rows = rows.filter(r => r.name.toLowerCase().includes(q));
+  return rows.slice(0, 150);
+}
+
+function renderPools() {
+  for (const kind of ["hitters", "pitchers"]) {
+    const isH = kind === "hitters";
+    const picked = new Set(draft[kind]);
+    $(isH ? "hlist" : "plist").innerHTML = poolRows(kind).map(r => `
+      <div class="prow${picked.has(r.player_id) ? " taken" : ""}" data-id="${r.player_id}" data-k="${kind}">
+        <span class="nm">${r.name}</span><span class="tm">${r.team}</span>
+        <span class="st">${isH ? r.rc650.toFixed(0) + " RC" : r.fip.toFixed(2) + " FIP"}</span>
+      </div>`).join("");
+    const byId = new Map(draft.pool[kind].map(r => [r.player_id, r]));
+    $(isH ? "hchips" : "pchips").innerHTML = draft[kind].map(id => {
+      const r = byId.get(id);
+      return `<span class="chip2"><b>${r.name}</b>
+        <span class="x" data-id="${id}" data-k="${kind}">×</span></span>`;
+    }).join("");
+    $(isH ? "hcnt" : "pcnt").textContent =
+      `${draft[kind].length} / ${CAP[kind]} ${isH ? "hitters" : "pitchers"}`;
+  }
+  updatePreview();
+}
+
+function updatePreview() {
+  const full = draft.hitters.length === CAP.hitters
+            && draft.pitchers.length === CAP.pitchers;
+  $("fgo").disabled = !full;
+  if (!full) {
+    $("fprev").textContent = "Draft 9 hitters and 5 pitchers to simulate.";
+    return;
+  }
+  // Live preview mirrors the server-side roster math (fantasy.py).
+  const h = draft.hitters.map(id => draft.pool.hitters.find(r => r.player_id === id));
+  const p = draft.pitchers.map(id => draft.pool.pitchers.find(r => r.player_id === id));
+  const rs = h.reduce((a, r) => a + r.rc_pa, 0) * 38 / 9;
+  const ipSum = p.reduce((a, r) => a + Math.max(r.ip, 1), 0);
+  const rot = p.reduce((a, r) => a + r.fip * Math.max(r.ip, 1), 0) / ipSum;
+  const ra = (0.65 * rot + 0.35 * draft.pool.lg_fip) * 1.08;
+  $("fprev").textContent =
+    `Preview: ${rs.toFixed(2)} RS/G · ${ra.toFixed(2)} RA/G · run diff ${(rs - ra) >= 0 ? "+" : ""}${(rs - ra).toFixed(2)}`;
+}
+
+function togglePick(kind, id) {
+  const i = draft[kind].indexOf(id);
+  if (i >= 0) draft[kind].splice(i, 1);
+  else if (draft[kind].length < CAP[kind]) draft[kind].push(id);
+  renderPools();
+}
+
+for (const [list, kind] of [["hlist", "hitters"], ["plist", "pitchers"]])
+  $(list).onclick = e => {
+    const row = e.target.closest(".prow");
+    if (row) togglePick(kind, +row.dataset.id);
+  };
+for (const chips of ["hchips", "pchips"])
+  $(chips).onclick = e => {
+    if (e.target.classList.contains("x"))
+      togglePick(e.target.dataset.k, +e.target.dataset.id);
+  };
+$("hsearch").oninput = renderPools;
+$("psearch").oninput = renderPools;
+$("hfill").onclick = () => { autofill("hitters"); };
+$("pfill").onclick = () => { autofill("pitchers"); };
+$("hclear").onclick = () => { draft.hitters = []; renderPools(); };
+$("pclear").onclick = () => { draft.pitchers = []; renderPools(); };
+
+function autofill(kind) {
+  const picked = new Set(draft[kind]);
+  for (const r of draft.pool[kind]) {          // pools arrive rating-sorted
+    if (draft[kind].length >= CAP[kind]) break;
+    if (!picked.has(r.player_id)) { draft[kind].push(r.player_id); picked.add(r.player_id); }
+  }
+  renderPools();
+}
+
+$("fgo").onclick = async () => {
+  $("busy").textContent = "simulating full season…";
+  $("fgo").disabled = true;
+  try {
+    const r = await fetch("/api/fantasy", {
+      method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        hitters: draft.hitters, pitchers: draft.pitchers,
+        slot: $("slot").value, sims: +$("fsims").value }) });
+    if (!r.ok) throw new Error((await r.json()).error || r.statusText);
+    render(await r.json());
+    $("busy").textContent = "";
+  } catch (e) {
+    $("busy").textContent = "error: " + e.message;
+  } finally {
+    $("fgo").disabled = false;
+  }
+};
+
+// ---------- tabs ----------
+function setTab(mode) {
+  $("tabSeason").classList.toggle("on", mode === "season");
+  $("tabImpact").classList.toggle("on", mode === "impact");
+  $("tabFantasy").classList.toggle("on", mode === "fantasy");
+  $("tabAwards").classList.toggle("on", mode === "awards");
+  $("ctlSeason").style.display = mode === "season" ? "" : "none";
+  $("ctlInjury").style.display = mode === "impact" ? "" : "none";
+  $("ctlAwards").style.display = mode === "awards" ? "" : "none";
+  $("ctlFantasy").style.display = mode === "fantasy" ? "" : "none";
+  if (mode === "fantasy") loadPool();
+  else if (mode === "impact") loadImpact();
+  else if (mode === "awards") loadAwards();
+  else refresh();
+}
+$("tabSeason").onclick = () => setTab("season");
+$("tabImpact").onclick = () => setTab("impact");
+$("tabAwards").onclick = () => setTab("awards");
+$("tabFantasy").onclick = () => setTab("fantasy");
+
+// ---------- award races ----------
+let awardsData = null;
+
+async function loadAwards() {
+  if (awardsData) return;
+  $("awardsBusy").textContent = " Simulating award votes…";
+  try {
+    const r = await fetch("/api/awards");
+    if (!r.ok) throw new Error((await r.json()).error || r.statusText);
+    awardsData = await r.json();
+    renderAwards();
+    $("awardsBusy").textContent =
+      ` ${awardsData.sims.toLocaleString()} trials per race.`;
+  } catch (e) { $("awardsBusy").textContent = " error: " + e.message; }
+}
+
+const fmt = (v, dig = 1, dash = "—") => v === null || v === undefined ? dash : v.toFixed(dig);
+
+function awardTip(p, kind) {
+  const m = p.metrics;
+  if (kind === "mvp")
+    return `<b>${p.name}</b> · ${p.team}${m.two_way ? " · two-way" : ""}<br>` +
+      `wOBA ${fmt(m.woba, 3)} · xwOBA ${fmt(m.xwoba, 3)} · wRC+ ${fmt(m.wrc_plus, 0)}<br>` +
+      `Barrel ${fmt(m.brl)}% · HardHit ${fmt(m.hh)}% · Field ${m.frp >= 0 ? "+" : ""}${fmt(m.frp, 0)} runs<br>` +
+      `Projected WAR* ${p.war_proj}`;
+  return `<b>${p.name}</b> · ${p.team}<br>` +
+    `FIP ${fmt(m.fip, 2)} · SIERA ${fmt(m.siera, 2)} · xERA ${fmt(m.xera, 2)} · K ${fmt(m.k_pct)}%<br>` +
+    `Velo ${fmt(m.velo)} mph · Spin ${m.spin ?? "—"} rpm · IVB ${fmt(m.ivb)}" · Stuff z ${m.stuff_z >= 0 ? "+" : ""}${m.stuff_z}<br>` +
+    `Zone ${fmt(m.zone)}% · Whiff ${fmt(m.whiff)}% · Chase ${fmt(m.chase)}%<br>` +
+    `Mix: ${m.mix || "—"} · Projected WAR* ${p.war_proj}`;
+}
+
+function renderAwards() {
+  for (const key of ["al_mvp", "nl_mvp", "al_cy", "nl_cy"]) {
+    const kind = key.endsWith("mvp") ? "mvp" : "cy";
+    const rows = awardsData[key].slice(0, 8);
+    const max = Math.max(...rows.map(p => p.prob), 1);
+    $(key).innerHTML = rows.map(p => `
+      <div class="brow" data-tip="${awardTip(p, kind).replace(/"/g, "&quot;")}">
+        <div class="lab" style="width:150px;text-align:left">${p.name}
+          <span style="color:var(--muted)">· ${p.team}</span></div>
+        <div class="track"><div class="bar" style="width:${(p.prob / max * 100).toFixed(1)}%"></div></div>
+        <div class="num">${p.prob.toFixed(1)}%</div>
+      </div>`).join("");
+    $(key).querySelectorAll(".brow").forEach(row => {
+      row.onmousemove = e => showTip(row.dataset.tip, e.clientX, e.clientY);
+      row.onmouseleave = hideTip;
+    });
+  }
+}
+
+// ---------- composite value leaderboard (feeds the injury lab) ----------
+const lead = { players: null };
+
+async function loadImpact() {
+  await loadTargets();
+  if (!lead.players) {
+    const ld = await (await fetch("/api/impact/leaderboard")).json();
+    lead.players = ld.players;
+    renderLead();
+  }
+}
+
+function metricStr(m) {
+  const parts = [];
+  if (m.wrc_plus !== undefined) parts.push(`${m.wrc_plus.toFixed(0)} wRC+`);
+  if (m.frp) parts.push(`${m.frp > 0 ? "+" : ""}${m.frp.toFixed(0)} FRP`);
+  if (m.siera !== undefined) parts.push(`${m.siera.toFixed(2)} SIERA`);
+  return parts.join(" · ");
+}
+
+function renderLead() {
+  $("leadlist").innerHTML = lead.players.map((p, i) => `
+    <div class="prow" data-id="${p.player_id}" data-team="${p.team}">
+      <span class="tm" style="width:22px">${i + 1}</span>
+      <span class="nm">${p.name}${p.two_way ? " ⇄" : ""} <span style="color:var(--muted)">${p.team}</span></span>
+      <span class="st" style="width:150px">${metricStr(p.metrics)}</span>
+      <span class="st">${p.war_est.toFixed(1)} WAR*</span>
+    </div>`).join("");
+}
+
+$("leadlist").onclick = e => {
+  const row = e.target.closest(".prow");
+  if (!row) return;
+  const pid = +row.dataset.id, team = row.dataset.team;
+  // Route the pick through the injury-lab selectors so kind/two-way
+  // detection and the severity dial apply, then simulate.
+  injury.team = team;
+  $("iteam").value = team;
+  fillPlayers();
+  const opt = [...$("iplayer").options].find(o => o.value.startsWith(pid + ":"));
+  if (!opt) { $("ibusy").textContent = "player below lab thresholds"; return; }
+  $("iplayer").value = opt.value;
+  pickPlayer(opt.value);
+  $("igo").onclick();
+};
+
+(async () => {
+  const teams = await (await fetch("/api/teams")).json();
+  const opts = sel => teams
+    .sort((a, b) => a.abbrev.localeCompare(b.abbrev))
+    .map(t => `<option value="${t.abbrev}"${t.abbrev === sel ? " selected" : ""}>${t.abbrev} — ${t.name}</option>`)
+    .join("");
+  $("team").innerHTML = opts("LAD");
+  $("slot").innerHTML = opts("ATH");
+  $("iteam").innerHTML = opts("LAD");
+  refresh();
+})();
+</script>
+</body>
+</html>

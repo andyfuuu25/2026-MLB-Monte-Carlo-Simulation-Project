@@ -1,0 +1,31 @@
+# --- cached data & generated outputs (regenerable, keep repo lean) ---
+data/
+outputs/
+
+# --- python ---
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+venv/
+env/
+
+# --- secrets & local config (none used today; guard against future leaks) ---
+.env
+.env.*
+*.key
+*.pem
+secrets*.json
+config.local.*
+
+# --- editor / OS noise ---
+.vscode/
+.idea/
+.claude/
+*.swp
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# --- logs ---
+*.log
